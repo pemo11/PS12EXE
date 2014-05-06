@@ -3,38 +3,36 @@
 Ps12EXE - PS1-Dateien in Exe einbetten GUI-Version
 .Description
 Erzeugt eine Exe-Datei mit einer Ps1-Datei als eingebetteter Ressource, die nach dem Start ausgeführt wird
-Version 1.0
+Version 1.0 - Letzte Änderung: 6/5/2014
 .Notes
 Original-Autor und Idee: Keith Hill
 .Notes
-Aktuell funktioniert das Skript nur unter der Powershell 2.0
+Aktuell funktioniert das Skript nicht in der ISE-Konsole
 .Notes
-Powershell.exe muss mit -STA gestartet werden
+Powershell.exe Version 2.0 muss mit -STA gestartet werden
 #>
 
 Set-StrictMode -Version 2.0
 
 <#
 .Synopsis
-Bettet eine Ps1-Datei in eine Exe-Datei ein
+  Bettet eine Ps1-Datei in eine Exe-Datei ein
 .Parameter PS1Path
-Der Pfad der Ps1-Datei
+  Der Pfad der Ps1-Datei
 .Parameter OutputAssemblyPath
-Der Pfad der Exe-Datei, die angelegt werden soll
+  Der Pfad der Exe-Datei, die angelegt werden soll
 #>
 function Make-Exe
 {
     [CmdletBinding()]
 
     param(
-        [Parameter(Mandatory = $true, Position = 0)]
+        [Parameter(Mandatory=$true,Position=0)]
         [ValidateNotNullOrEmpty()]
-        [String]
-        $PS1Path,
+        [String]$PS1Path,
     
-        [Parameter(Mandatory = $true, Position = 1)]
-        [String]
-        $OutputAssemblyPath
+        [Parameter(Mandatory=$true,Position=1)]
+        [String]$OutputAssemblyPath
     )
 
     # $PS1PathCS = $PS1Path -replace "\\", "\\"
@@ -66,61 +64,69 @@ function Make-Exe
 
             static void Main(string[] args)
             {
-            string script = GetScript();
-            RunScript(script, args, null);
+              string script = GetScript();
+
+              RunScript(script, args, args);
             }
 
             private static string GetScript()
             {
-            string script = String.Empty;
+              string script = String.Empty;
 
-            Assembly ass = Assembly.GetExecutingAssembly();
-            try
-            {
+              Assembly ass = Assembly.GetExecutingAssembly();
+              try
+              {
                 using (Stream st = ass.GetManifestResourceStream("$PS1Name"))
                 {
                     StreamReader sr = new StreamReader(st);
                     script = sr.ReadToEnd();
                 }
-            }
-            catch
-            {
-                script = "Write-Host -Fore Red -Back White";
-            }
+              }
+              catch(SystemException ex)
+              {
+                 script = "Write-Host -Fore Red -Back White 'Fehler!'";
+                 Console.WriteLine("Fehler: " + ex.Message);
+              }
                 return script;
-            }
+             }
 
             private static void RunScript(string script, string[] args, object input)
             {
                 Debug.WriteLine("Skript:\n " + script);
-            lock (_powerShellLock)
-            {
-                _powerShellEngine = PowerShell.Create();
-            }
-
-            try
-            {
-                _powerShellEngine.Runspace = RunspaceFactory.CreateRunspace(_psHost);
-                _powerShellEngine.Runspace.ApartmentState = System.Threading.ApartmentState.STA;
-                _powerShellEngine.Runspace.Open();
-                _powerShellEngine.AddScript(script);
-                _powerShellEngine.AddCommand("Out-Default");
-                _powerShellEngine.Commands.Commands[0].MergeMyResults(PipelineResultTypes.Error, PipelineResultTypes.Output);
-
-                if (input != null)
+                lock (_powerShellLock)
                 {
+                  _powerShellEngine = PowerShell.Create();
+                }
+
+                try
+                {
+                  _powerShellEngine.Runspace = RunspaceFactory.CreateRunspace(_psHost);
+                  _powerShellEngine.Runspace.ApartmentState = System.Threading.ApartmentState.STA;
+                  _powerShellEngine.Runspace.Open();
+                  // Skript hinzufügen
+                  _powerShellEngine.AddScript(script);
+                  // Die übergebenen Argumente hinzufügen
+                  foreach (var arg in args)
+                  {
+                    _powerShellEngine.AddParameter(null, arg);
+                   }
+                  // Am Ende soll alles ausgegeben werden
+                  _powerShellEngine.AddCommand("Out-Default");
+                  _powerShellEngine.Commands.Commands[0].MergeMyResults(PipelineResultTypes.Error, PipelineResultTypes.Output);
+                  if (input != null)
+                  {
                     Collection<PSObject> results = _powerShellEngine.Invoke(new[] { input });
                     Debug.WriteLine(String.Format("Fertig - {0} Ergebnisse.", results.Count));
-                }
-                else
-                {
+                  }
+                  else
+                 {
                     Collection<PSObject> results = _powerShellEngine.Invoke();
                     Debug.WriteLine(String.Format("Fertig - {0} Ergebnisse.", results.Count));
-                }
+                 }
             }
             catch (SystemException ex)
             {
-                Debug.WriteLine("Fehler: " + ex.Message);
+                Console.WriteLine("Fehler: " + ex.Message);
             }
             finally
             {
@@ -309,7 +315,19 @@ function Make-Exe
     {
         public override KeyInfo ReadKey(ReadKeyOptions options)
         {
-            throw new NotImplementedException();
+	        ConsoleKeyInfo cki = Console.ReadKey();
+
+	        ControlKeyStates cks = 0;
+	        if ((cki.Modifiers & ConsoleModifiers.Alt) != 0)
+	            cks |= ControlKeyStates.LeftAltPressed | ControlKeyStates.RightAltPressed;
+	        if ((cki.Modifiers & ConsoleModifiers.Control) != 0)
+	            cks |= ControlKeyStates.LeftCtrlPressed | ControlKeyStates.RightCtrlPressed;
+	        if ((cki.Modifiers & ConsoleModifiers.Shift) != 0)
+	            cks |= ControlKeyStates.ShiftPressed;
+	        if (Console.CapsLock)
+	            cks |= ControlKeyStates.CapsLockOn;
+
+	        return new KeyInfo((int)cki.Key, cki.KeyChar, cks, false);
         }
 
         public override void FlushInputBuffer()
@@ -319,11 +337,13 @@ function Make-Exe
 
         public override void SetBufferContents(Coordinates origin, BufferCell[,] contents)
         {
+          // TODO: Muss gegebenenfalls implementiert werden???
             throw new NotImplementedException();
         }
 
         public override void SetBufferContents(Rectangle rectangle, BufferCell fill)
         {
+          // TODO: Muss gegebenenfalls implementiert werden???
             throw new NotImplementedException();
         }
 
@@ -403,22 +423,35 @@ function Make-Exe
 }
 "@
 
-      # Hier beginnt die Function
-    $ReferenceAssemblies = "System.dll","System.Data.dll", ([PSObject].Assembly.Location)
+    # Hier beginnt die Function
+    # Wichtig: Benötigte Assembly-Referenzen angeben
+    $ReferenceAssemblies = @("System.dll","System.Data.dll", ([PSObject].Assembly.Location))
+    $ReferenceAssemblies += ([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object  { $_.ManifestModule.Name -ieq "System.Core.dll" } | Select-Object -First 1).Location
 
-    $ErrorLogPfad = Join-Path -Path (Split-Path -Path $PS1Path) -ChildPath PS1ExeErrors.log
-    $Cp = New-Object -TypeName System.CodeDom.Compiler.CompilerParameters -ArgumentList $ReferenceAssemblies,$OutputAssemblyPath,$true
+    # Pfad der Error Log-Datei
+    $ErrorLogPfad = Join-Path -Path (Split-Path -Path $Ps1FileName) -ChildPath PS1ExeErrors.log
+    # C# Compiler anlegen
+    $Cp = New-Object -TypeName System.CodeDom.Compiler.CompilerParameters `
+      -ArgumentList $ReferenceAssemblies, $OutputAssemblyPath, $true
+    # Verzeichnis für temporäre Dateien festlegen
     $Cp.TempFiles = New-Object -TypeName System.CodeDom.Compiler.TempFileCollection -ArgumentList ([IO.Path]::GetTempPath())
+    # Weitere Angaben zur Kompilierung
     $Cp.GenerateExecutable = $true
     $Cp.GenerateInMemory = $false
     $Cp.IncludeDebugInformation = $false
+    # PS1-Datei als Ressoure einbetten
     [void]$Cp.EmbeddedResources.Add($PS1Path)
-    $Dict = New-Object -Typename 'System.Collections.Generic.Dictionary[string, string]'
-    $Dict.Add("CompilerVersion","v3.5")
+    # Compiler-Optionen einstellen
+    $Dict = New-Object -Typename 'System.Collections.Generic.Dictionary[String, String]'
+    $Dict.Add("CompilerVersion","v4.0")
     $Provider = New-Object -TypeName Microsoft.CSharp.CSharpCodeProvider -ArgumentList $Dict
+    # C#-Code mit Ps1-Datei kompilieren
     $Results = $Provider.CompileAssemblyFromSource($Cp, $AssemblyCode)
-    $StatusListBox.Items.Add("Exe-Datei wurde erstellt")
+    # Ergebnis anzeigen
+    $MainStatusBar.Text = "Fertig mit {0} Fehlern" -f $Results.Errors.Count
+    $StatusListBox.Items.Add("Der PS1-Compiler ist fertig.")
     $StatusListBox.Items.Add(("Anzahl Fehler: {0:0}" -f $Results.Errors.Count))
+    # Wenn es Fehler gab, dann anzeigen
     if ($Results.Errors.Count)
     {
         $ErrorLines = ""
@@ -431,7 +464,7 @@ function Make-Exe
     }
     else
     {
-        $StatusListBox.Items.Add("*** Erfolg - Exe-Datei wurde fehlerfrei erstellt.")
+        $StatusListBox.Items.Add("*** Exe-Datei wurde erstellt.")
     }
 }
 
@@ -449,7 +482,7 @@ function Show-MainWindow
     $ExeErstellenButton = New-Object -Typename System.Windows.Forms.Button
     $PS1AuswahlButton = New-Object -Typename System.Windows.Forms.Button
     $InitialFormWindowState = New-Object -Typename System.Windows.Forms.FormWindowState
-    $ExePfadTextBox = New-Object -Typename System.Windows.Forms.TextBox
+    $ExeNameTextBox = New-Object -Typename System.Windows.Forms.TextBox
     $Label1 = New-Object -Typename System.Windows.Forms.Label
 
     # Skriptblock für das Anklicken des PS1Auswahl-Buttons
@@ -458,10 +491,15 @@ function Show-MainWindow
       $Ofd = New-Object -TypeName System.Windows.Forms.OpenFileDialog
       $Ofd.Title = "Auswahl PS1-Datei"
       $Ofd.Filter = "PS1-Dateien (*.ps1)|*.ps1|Alle Dateien|*.*"
+      $Ofd.InitialDirectory = $PSScriptRoot
       if ($Ofd.ShowDialog() -eq "OK")
       {
-        $Script:Ps1Pfad = $Ofd.FileName
-        $StatusListBox.Items.Add($Ps1Pfad + " wurde gewählt")
+        $Script:Ps1FileName = $Ofd.FileName
+        $Script:PS1Pfad = Split-Path -Path $Ofd.FileName
+        $StatusListBox.Items.Add($Ps1FileName + " wurde gewählt")
+        # Verzeichnis der ausgewählten PS1-Datei in der Textbox voreinstellen
+        $ExeName = [System.IO.Path]::GetFileNameWithoutExtension((Split-Path -Path $Ofd.FileName -Leaf)) + "_konvertiert.exe"
+        $ExeNameTextBox.Text = $ExeName
         $ExeErstellenButton.Enabled = $true;
       }
     }
@@ -469,55 +507,23 @@ function Show-MainWindow
     # Skriptblock für das Anklicken des Exe-Erstellen-Buttons
     $ExeErstellenButton_OnClick=
     {
-        $AssPfad = $ExePfadTextBox.Text
-        # Gibt es den Pfad?
-        if (!(Test-Path -Path $AssPfad))
+        if (!($ExeNameTextBox.Text.EndsWith(".exe")))
         {
-            # Ist es ein gültiger Pfad?
-            if (Test-Path -Path $AssPfad -IsValid)
-            {
-              # Soll das Verzeichnis angelegt werden?
-              <#
-Choice-Dialog wird in der Befehlszeile auch in der Befehlszeile angezeigt
-$JaChoice = New-Object -TypeName System.Management.Automation.Host.ChoiceDescription "Ja", "Verzeichnis anlegen"
-$NeinChoice = New-Object -TypeName System.Management.Automation.Host.ChoiceDescription "Nein", "Verzeichnis nicht anlegen"
-if ($Host.UI.PromptForChoice("Wie soll es weitergehen?", "Verzeichnis $AssPfad anlegen?",
-@($JaChoice, $NeinChoice), 0) -eq 0)
-#>
-               if ([System.Windows.MessageBox]::Show("Wie soll es weitergehen?", "Verzeichnis $AssPfad anlegen?","YesNo"))
-               {
-                 md -Path $AssPfad -ErrorAction Ignore
-                 if (!$?)
-                 {
-                    $StatusListBox.Items.Add("$AssPfad konnte nicht angelegt werden - Skript wird beendet.")
-                    Exit -2
-                 }
-                 else
-                 {
-                    $StatusListBox.Items.Add("Das Verzeichnis $AssPfad wurde angelegt.")
-                 }
-               }
-             }
-             else
-             {
-                $StatusListBox.Items.Add("Ungültiges Verzeichnis $AssPfad - Skript wird beendet.")
-                Exit -3
-             }
+            $ExeNameTextBox.text += ".exe"
         }
+        $AssPfad = Join-Path -Path $PSScriptRoot -ChildPath $ExeNameTextBox.Text
         $StatusListBox.Items.Add($Ps1Pfad + " wird in Exe-Datei konvertiert.")
-        $AssName = [System.IO.Path]::GetFileNameWithoutExtension($Ps1Pfad)
-        $AssName += "_Konvertiert.exe"
-        $AssPfad = Join-Path -Path $AssPfad -ChildPath $AssName
-        Make-Exe -PS1Path $Ps1Pfad -OutputAssemblyPath $AssPfad
+        $AssName = [System.IO.Path]::GetFileNameWithoutExtension($Ps1FileName)
+        Make-Exe -PS1Path $Ps1FileName -OutputAssemblyPath $AssPfad
         $ExeErstellenButton.Enabled = $false
     }
 
     # Skritblock für das Laden des Fensters
     $OnLoadForm=
     {
-  $MainForm.WindowState = $InitialFormWindowState
-        $ExeErstellenButton.Enabled = $false
-        $ExePfadTextBox.Text = $env:USERPROFILE + "\PS1Exe"
+        $MainForm.WindowState = $InitialFormWindowState
+        $ExeErstellenButton.Enabled = $False
+        $ExeNameTextBox.Text = "Test_konvertiert.exe"
     }
 
     $MainForm.ClientSize = New-Object -Typename System.Drawing.Size -ArgumentList 500, 440
@@ -541,12 +547,12 @@ if ($Host.UI.PromptForChoice("Wie soll es weitergehen?", "Verzeichnis $AssPfad a
 
     $MainForm.Controls.Add($GroupBox1)
 
-    $ExePfadTextBox.BackColor = [System.Drawing.Color]::FromArgb(255,192,255,192)
-    $ExePfadTextBox.Location = New-Object -TypeName System.Drawing.Point -ArgumentList 18, 70
-    $ExePfadTextBox.Name = "ExePfadTextBox"
-    $ExePfadTextBox.Size = New-Object -TypeName System.Drawing.Size -ArgumentList 364, 26
+    $ExeNameTextBox.BackColor = [System.Drawing.Color]::FromArgb(255,192,255,192)
+    $ExeNameTextBox.Location = New-Object -TypeName System.Drawing.Point -ArgumentList 18, 70
+    $ExeNameTextBox.Name = "ExePfadTextBox"
+    $ExeNameTextBox.Size = New-Object -TypeName System.Drawing.Size -ArgumentList 364, 26
 
-    $GroupBox2.Controls.Add($ExePfadTextBox)
+    $GroupBox2.Controls.Add($ExeNameTextBox)
 
     $Label1.Location = New-Object -TypeName System.Drawing.Point -ArgumentList 16, 44
     $Label1.Name = "label1"
